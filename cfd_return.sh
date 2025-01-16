@@ -3,7 +3,7 @@
 # 当前脚本更新日期 （2025.01.10）
 
 # GitHub 代理地址
-GH_PROXY='https://ghproxy.lvedong.eu.org/'
+GH_PROXY='https://ghfast.top/'
 
 # 当脚本被中断时，清理临时文件
 trap "rm -rf /tmp/cfd_return; exit" INT
@@ -98,7 +98,7 @@ ingress:
   - service: http_status:404
 EOF
     local CFD_ARGS="tunnel --logfile /tmp/cloudflared.log --edge-ip-version auto --config /etc/cfd_return_server/tunnel.yml run"
-  elif echo "$CFD_AUTH_INPUT" | egrep -q '^[A-Z0-9a-z=]{120,250}$'; then
+  elif echo "$CFD_AUTH_INPUT" | egrep -q '[A-Z0-9a-z=]{120,250}$'; then
     local CFD_TOKEN=$(echo "$CFD_AUTH_INPUT" | sed 's/^[ ]*//; s/[ ]*$//' | awk -F ' ' '{print $NF}')
     local CFD_ARGS="tunnel --logfile /tmp/cloudflared.log --edge-ip-version auto run --token ${CFD_TOKEN}"
   fi
