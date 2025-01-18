@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# 当前脚本更新日期 （2025.01.10）
+# 当前脚本更新日期 （2025.01.18）
 
 # GitHub 代理地址
 GH_PROXY='https://ghfast.top/'
@@ -59,6 +59,16 @@ check_arch() {
 
 # 服务端安装函数
 server_install() {
+  # 生成 10000-65535 的随机空闲端口号
+  search_idle_ramdom_port() {
+    [ "$(type -p ss)" ] && local CMD=ss || local CMD=netstat
+    while true; do
+      local PORT=$(( (RANDOM % 55536) + 10000 ))
+      ! $CMD -nlutp | grep -q ":$PORT" && echo "$PORT" && break
+    done
+  }
+
+  # 检查端口是否可用
   check_port_inuse() {
     local PORT=$1
     [[ "$PORT" -lt 1 || "$PORT" -gt 65535 ]] && echo -e "\nError: 请输入 1-65535 之间的端口。" && return
@@ -70,11 +80,15 @@ server_install() {
 
   [ ! -d /tmp/cfd_return ] && mkdir -p /tmp/cfd_return
 
-  until [ "$PORT_USABLE" = 'port_usable' ]; do
+  until [[ "$CFD_PORT" =~ ^[0-9]+$ ]]; do
     echo ""
-    [ -z "$CFD_PORT_INPUT" ] && read -rp "请输入 Cloudflared tunnel 回源的端口 [1-65535]: " CFD_PORT_INPUT
-    check_port_inuse $CFD_PORT_INPUT
-    echo "$PORT_USABLE" | grep -qwv 'port_usable' && unset CFD_PORT_INPUT || CFD_PORT=$CFD_PORT_INPUT
+    [ -z "$CFD_PORT_INPUT" ] && read -rp "请输入 Cloudflared tunnel 回源的端口 [1-65535]，不填写则使用 10000-65535 的随机端口: " CFD_PORT_INPUT
+    if [ -z "$CFD_PORT_INPUT" ]; then
+      CFD_PORT=$(search_idle_ramdom_port)
+    else
+      check_port_inuse $CFD_PORT_INPUT
+      echo "$PORT_USABLE" | grep -qwv 'port_usable' && unset CFD_PORT_INPUT || CFD_PORT=$CFD_PORT_INPUT
+    fi
   done
 
   echo ""
@@ -110,8 +124,18 @@ EOF
   [ -z "$WS_PATH" ] && WS_PATH=$WS_PATH_DEFAULT
 
   echo ""
-  [ -z "$STACK_INPUT" ] && read -rp "请输入优选 IP 列表 [4,6,d]，默认为双栈 d: " STACK_INPUT
-  echo "$STACK_INPUT" | egrep -qw '4|6' && STACK=$STACK_INPUT || STACK='d'
+  [ -z "$STACK_INPUT" ] && read -rp "请输入优选 IP 列表 [4,6,d,n]，d是双栈，n是不进行优选，默认为双栈 d: " STACK_INPUT
+  case "$STACK_INPUT" in
+    4|6 )
+      local STACK=$STACK_INPUT
+      ;;
+    n )
+      local IS_CFD=no_cfd
+      ;;
+    * )
+      local STACK='d'
+      ;;
+    esac
 
   local CLOUDFLARED_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${ARCH}"
 
@@ -132,20 +156,22 @@ EOF
     GOST_URL=${GOST_URL:-${GOST_URL_DEFAULT}}
     wget --no-check-certificate -O- ${GH_PROXY}${GOST_URL} | tar xzv -C /tmp/cfd_return gost
 
-    echo -e "\n下载 cfd 及 IP 列表"
-    wget --no-check-certificate -O /tmp/cfd_return/cfd ${GH_PROXY}${CFD_URL}
-    case "$STACK" in
-      4 )
-        wget --no-check-certificate -O- ${GH_PROXY}${IP_URL} | grep '/24' > /tmp/cfd_return/ip
-        ;;
-      6 )
-        wget --no-check-certificate -O- ${GH_PROXY}${IP_URL} | grep '/124' > /tmp/cfd_return/ip
-        ;;
-      d )
-        wget --no-check-certificate -O- ${GH_PROXY}${IP_URL} > /tmp/cfd_return/ip
-        ;;
-    esac
-    wget --no-check-certificate -O- ${GH_PROXY}${IP_URL} | grep '/24' > /tmp/cfd_return/ip
+    if [ "$IS_CFD" != 'no_cfd' ]; then
+      echo -e "\n下载 cfd 及 IP 列表"
+      wget --no-check-certificate -O /tmp/cfd_return/cfd ${GH_PROXY}${CFD_URL}
+      case "$STACK" in
+        4 )
+          wget --no-check-certificate -O- ${GH_PROXY}${IP_URL} | grep '/24' > /tmp/cfd_return/ip
+          ;;
+        6 )
+          wget --no-check-certificate -O- ${GH_PROXY}${IP_URL} | grep '/124' > /tmp/cfd_return/ip
+          ;;
+        d )
+          wget --no-check-certificate -O- ${GH_PROXY}${IP_URL} > /tmp/cfd_return/ip
+          ;;
+      esac
+      wget --no-check-certificate -O- ${GH_PROXY}${IP_URL} | grep '/24' > /tmp/cfd_return/ip
+    fi
 
   elif [ "$(type -p curl)" ]; then
     echo -e "\n下载 Cloudflared"
@@ -156,28 +182,33 @@ EOF
     GOST_URL=${GOST_URL:-${GOST_URL_DEFAULT}}
     curl -L ${GH_PROXY}${GOST_URL} | tar xzv -C /tmp/cfd_return gost
 
-    echo -e "\n下载 cfd 及 IP 列表"
-    curl -Lo /tmp/cfd_return/cfd ${GH_PROXY}${CFD_URL}
-    case "$STACK" in
-      4 )
-        curl -sLo- ${GH_PROXY}${IP_URL} | grep '/24' > /tmp/cfd_return/ip
-        ;;
-      6 )
-        curl -sLo- ${GH_PROXY}${IP_URL} | grep '/124' > /tmp/cfd_return/ip
-        ;;
-      d )
-        curl -sLo- ${GH_PROXY}${IP_URL} > /tmp/cfd_return/ip
-        ;;
-    esac
+    if [ "$IS_CFD" != 'no_cfd' ]; then
+      echo -e "\n下载 cfd 及 IP 列表"
+      curl -Lo /tmp/cfd_return/cfd ${GH_PROXY}${CFD_URL}
+      case "$STACK" in
+        4 )
+          curl -sLo- ${GH_PROXY}${IP_URL} | grep '/24' > /tmp/cfd_return/ip
+          ;;
+        6 )
+          curl -sLo- ${GH_PROXY}${IP_URL} | grep '/124' > /tmp/cfd_return/ip
+          ;;
+        d )
+          curl -sLo- ${GH_PROXY}${IP_URL} > /tmp/cfd_return/ip
+          ;;
+      esac
+    fi
   fi
 
-  if [[ -s /tmp/cfd_return/gost && -s /tmp/cfd_return/cloudflared && -s /tmp/cfd_return/cfd ]]; then
-    chmod +x /tmp/cfd_return/gost /tmp/cfd_return/cloudflared /tmp/cfd_return/cfd
+  if [[ -s /tmp/cfd_return/gost && -s /tmp/cfd_return/cloudflared ]]; then
+    chmod +x /tmp/cfd_return/gost /tmp/cfd_return/cloudflared
     mkdir -p /etc/cfd_return_server
-    mv /tmp/cfd_return/gost /tmp/cfd_return/cloudflared /tmp/cfd_return/cfd /tmp/cfd_return/ip /etc/cfd_return_server
+    mv /tmp/cfd_return/gost /tmp/cfd_return/cloudflared /etc/cfd_return_server
     [ -s /tmp/cfd_return/tunnel.json ] && mv /tmp/cfd_return/tunnel* /etc/cfd_return_server/
-    rm -rf /tmp/cfd_return
   fi
+
+  [[ -s /tmp/cfd_return/cfd && -s /tmp/cfd_return/ip ]] && chmod +x /tmp/cfd_return/cfd && mv /tmp/cfd_return/cfd /tmp/cfd_return/ip /etc/cfd_return_server
+
+  rm -rf /tmp/cfd_return
 
   if echo "$OS" | grep -qi 'openwrt'; then
     cat >/etc/init.d/cfd_server <<EOF
@@ -212,10 +243,18 @@ CFD_PROG="/etc/cfd_return_server/cloudflared"
 CFD_ARGS="${CFD_ARGS}"
 CFD_PID="/var/run/cfd.pid"
 
+EOF
+
+    if [ "$IS_CFD" != 'no_cfd' ]; then
+      cat >>/etc/init.d/cfd_server <<EOF
 CFD_ENDPOINT_PROG="/etc/cfd_return_server/cfd"
 CFD_ENDPOINT_ARGS="-file /etc/cfd_return_server/ip"
 CFD_ENDPOINT_PID="/var/run/cfd_endpoint.pid"
 
+EOF
+    fi
+
+    cat >>/etc/init.d/cfd_server <<EOF
 start_progs() {
   echo -e "\nStarting gost listener on port \${CFD_PORT}..."
   \$GOST_PROG \$GOST_ARGS >/dev/null 2>&1 &
@@ -224,10 +263,17 @@ start_progs() {
   echo -e "\nStarting Cloudflared..."
   \$CFD_PROG \$CFD_ARGS >/dev/null 2>&1 &
   echo \$! > \$CFD_PID
+EOF
+  if [ "$IS_CFD" != 'no_cfd' ]; then
+    cat >>/etc/init.d/cfd_server <<EOF
 
   echo -e "\nStarting cfd best endpoint..."
   \$CFD_ENDPOINT_PROG \$CFD_ENDPOINT_ARGS >/dev/null 2>&1 &
   echo \$! > \$CFD_ENDPOINT_PID
+EOF
+  fi
+
+  cat >>/etc/init.d/cfd_server <<EOF
 }
 
 stop_progs() {
@@ -241,11 +287,17 @@ stop_progs() {
     kill \$(cat \$CFD_PID)
     rm \$CFD_PID
   }
+EOF
+  if [ "$IS_CFD" != 'no_cfd' ]; then
+    cat >>/etc/init.d/cfd_server <<EOF
   echo "Stopping cfd best endpoint..."
   {
     kill \$(cat \$CFD_ENDPOINT_PID)
     rm \$CFD_ENDPOINT_PID
   }
+EOF
+  fi
+  cat >>/etc/init.d/cfd_server <<EOF
 }
 
 start() {
@@ -284,8 +336,18 @@ EOF
 
 CFD_PORT=${CFD_PORT}
 WS_PATH=${WS_PATH}
+EOF
+    if echo "$CFD_JSON" | grep -q '.'; then
+      cat >>/etc/cfd_return_server/start.sh <<EOF
+CFD_JSON='${CFD_JSON}'
+EOF
+    elif echo "$CFD_TOKEN" | grep -q '.'; then
+      cat >>/etc/cfd_return_server/start.sh <<EOF
 CFD_TOKEN=${CFD_TOKEN}
+EOF
+    fi
 
+  cat >>/etc/cfd_return_server/start.sh <<EOF
 GOST_PROG="/etc/cfd_return_server/gost"
 GOST_ARGS="-D -L relay+ws://:\${CFD_PORT}?path=/\${WS_PATH}&bind=true"
 GOST_PID="/var/run/gost.pid"
@@ -294,10 +356,17 @@ CFD_PROG="/etc/cfd_return_server/cloudflared"
 CFD_ARGS="${CFD_ARGS}"
 CFD_PID="/var/run/cfd.pid"
 
+EOF
+  if [ "$IS_CFD" != 'no_cfd' ]; then
+    cat >>/etc/cfd_return_server/start.sh <<EOF
 CFD_ENDPOINT_PROG="/etc/cfd_return_server/cfd"
 CFD_ENDPOINT_ARGS="-file /etc/cfd_return_server/ip"
 CFD_ENDPOINT_PID="/var/run/cfd_endpoint.pid"
 
+EOF
+  fi
+
+  cat >>/etc/cfd_return_server/start.sh <<EOF
 start() {
   echo -e "\nStarting gost listener on port \${CFD_PORT}..."
   \$GOST_PROG \$GOST_ARGS >/dev/null 2>&1 &
@@ -306,10 +375,18 @@ start() {
   echo -e "\nStarting Cloudflared..."
   \$CFD_PROG \$CFD_ARGS >/dev/null 2>&1 &
   echo \$! > \$CFD_PID
+EOF
+
+  if [ "$IS_CFD" != 'no_cfd' ]; then
+    cat >>/etc/cfd_return_server/start.sh <<EOF
 
   echo -e "\nStarting cfd best endpoint..."
   \$CFD_ENDPOINT_PROG \$CFD_ENDPOINT_ARGS >/dev/null 2>&1 &
   echo \$! > \$CFD_ENDPOINT_PID
+EOF
+  fi
+
+  cat >>/etc/cfd_return_server/start.sh <<EOF
 }
 
 stop() {
@@ -324,12 +401,18 @@ stop() {
     kill \$(cat \$CFD_PID)
     rm \$CFD_PID
   fi
+EOF
+  if [ "$IS_CFD" != 'no_cfd' ]; then
+    cat >>/etc/cfd_return_server/start.sh <<EOF
 
   echo "Stopping cfd best endpoint..."
   if [ -f "\$CFD_ENDPOINT_PID" ]; then
     kill \$(cat \$CFD_ENDPOINT_PID)
     rm \$CFD_ENDPOINT_PID
   fi
+EOF
+  fi
+  cat >>/etc/cfd_return_server/start.sh <<EOF
 }
 
 case "\$1" in
@@ -758,14 +841,14 @@ while getopts ":uhscnd:a:p:w:r:t:" OPTNAME; do
       echo -e "  -w\t\t服务端的 ws 路径 (服务端和客户端)"
       echo -e "  -d\t\t服务端的 Cloudflare tunnel 域名 (服务端和客户端)"
       echo -e "  -s\t\t安装服务端"
-      echo -e "  -a\t\t服务端的 Cloudflare tunnel json 或 token 认证(服务端)"
-      echo -e "  -t\t\t服务端的优选 IP 列表 (服务端)"
+      echo -e "  -a\t\t服务端的 Cloudflare tunnel json 或 token 认证(服务端)，注意需要有单引号"
+      echo -e "  -t\t\t服务端的优选 IP 列表 (服务端),可选 [4,6,d,n]，d是双栈，n是不进行优选，默认为双栈 d"
       echo -e "  -p\t\t服务端的端口 (服务端)"
       echo -e "  -n\t\t显示客户端安装命令 (服务端)"
       echo -e "  -c\t\t安装客户端"
       echo -e "  -r\t\t映射服务端使用的 socks5 端口 (客户端)"
       echo -e "\n示例:"
-      echo -e "  安装服务端: bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/fscarmen/cfd_return/main/cfd_return.sh) -s -p 20000 -d cfd.argo.com -w 3b451552-e776-45c5-9b98-bde3ab99bf75 -t eyJhIjoiOWN..."
+      echo -e "  安装服务端: bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/fscarmen/cfd_return/main/cfd_return.sh) -s -p 20000 -d cfd.argo.com -w 3b451552-e776-45c5-9b98-bde3ab99bf75 -t 4 -a 'eyJhIjoiOWN...'"
       echo -e "\n  安装客户端: bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/fscarmen/cfd_return/main/cfd_return.sh) -c -r 30000 -d cfd.argo.com -w 3b451552-e776-45c5-9b98-bde3ab99bf75"
       echo -e "\n  卸载 cfd_return: bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/fscarmen/cfd_return/main/cfd_return.sh) -u"
       echo ""

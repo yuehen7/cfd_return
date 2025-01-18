@@ -18,7 +18,7 @@
 * * *
 ## 1. 教程
 - 博客教程: https://www.fscarmen.com/2025/01/gost-argo.html
-- 视频教程:
+- 视频教程: https://youtu.be/X032LZkVZSs
 
 ## 2. 特点
 - 突破公网入口限制：传统 CDN 需要 VPS 具有公网 IP，而本工具借助 Cloudflare Tunnel，实现了内网穿透，无需公网 IP 即可接入 CDN。
@@ -53,7 +53,7 @@ bash <(wget -qO- https://raw.githubusercontent.com/fscarmen/cfd_return/main/cfd_
   -d your-domain.com \
   -w your-ws-path \
   -t 4 \
-  -a your-cloudflare-auth
+  -a 'your-cloudflare-auth'
 ```
 
 ### 4.2 客户端安装
@@ -89,8 +89,8 @@ bash <(wget -qO- https://raw.githubusercontent.com/fscarmen/cfd_return/main/cfd_
 | -w   | WebSocket 路径          | 服务端和客户端 |
 | -d   | Cloudflare Tunnel 域名  | 服务端和客户端 |
 | -s   | 安装服务端              | 服务端         |
-| -a   | Cloudflare Tunnel json 或 token 认证 | 服务端         |
-| -t   | Cloudflared 优选 IP 列表 [4,6,d]，默认为双栈 d | 服务端 |
+| -a   | Cloudflare Tunnel json 或 token 认证，注意值需要用单引号 | 服务端         |
+| -t   | Cloudflared 优选 IP 列表 [4,6,d,n]，d是双栈，n是不进行优选，默认为双栈 d | 服务端 |
 | -p   | 服务端端口              | 服务端         |
 | -n   | 显示客户端安装命令      | 服务端         |
 | -c   | 安装客户端              | 客户端         |
@@ -107,7 +107,7 @@ bash <(wget -qO- https://raw.githubusercontent.com/fscarmen/cfd_return/main/cfd_
   -d cfd.example.com \
   -w 3b451552-e776-45c5-9b98-bde3ab99bf75 \
   -t 4 \
-  -a eyJhIjoiOWN...
+  -a 'eyJhIjoiOWN...'
 ```
 
 ### 7.2 客户端完整安装示例：
@@ -133,5 +133,5 @@ bash <(wget -qO- https://raw.githubusercontent.com/fscarmen/cfd_return/main/cfd_
 ```
 
 ## 8. 鸣谢
-cf中转ip群主 高手哥的 Cloudflared 优选工具 cfd 和 cfd-tls
-imshuai 指导的 gost v3 端口转发: https://github.com/go-gost/gost/issues/647#issuecomment-2585301850
+- cf中转ip群主 高手哥的 Cloudflared 优选工具 cfd 和 cfd-tls
+- imshuai 指导的 gost v3 端口转发: https://github.com/go-gost/gost/issues/647#issuecomment-2585301850
