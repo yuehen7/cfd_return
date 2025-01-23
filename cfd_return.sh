@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 
-# 当前脚本更新日期 （2025.01.18）
+# 当前脚本更新日期 （2025.01.23）
 
 # GitHub 代理地址
 GH_PROXY='https://ghfast.top/'
 
+# 工作和临时目录
+SERVER_WORK_DIR='/etc/cfd_return_server'
+CLIENT_WORK_DIR='/etc/cfd_return_client'
+TMP_DIR='/tmp/cfd_return'
+
+
 # 当脚本被中断时，清理临时文件
-trap "rm -rf /tmp/cfd_return; exit" INT
+trap "rm -rf ${TMP_DIR}; exit" INT
 
 # 项目说明
 description() {
@@ -33,8 +39,8 @@ check_os() {
 
 # 检查是否已安装服务端或客户端
 check_install() {
-  [ -d /etc/cfd_return_server ] && IS_INSTALL_SERVER=installed || IS_INSTALL_SERVER=uninstall
-  [ -d /etc/cfd_return_client ] && IS_INSTALL_CLIENT=installed || IS_INSTALL_CLIENT=uninstall
+  [ -d ${SERVER_WORK_DIR} ] && IS_INSTALL_SERVER=installed || IS_INSTALL_SERVER=uninstall
+  [ -d ${CLIENT_WORK_DIR} ] && IS_INSTALL_CLIENT=installed || IS_INSTALL_CLIENT=uninstall
 }
 
 # 检查系统架构
@@ -78,7 +84,7 @@ server_install() {
 
   echo "$OS" | egrep -qiv "CentOS|Debian|OpenWrt" && echo "Error: 当前操作系统是: ${OS}，服务端只支持 CentOS, Debian, Ubuntu 和 OpenWRT。" && exit 1
 
-  [ ! -d /tmp/cfd_return ] && mkdir -p /tmp/cfd_return
+  [ ! -d ${TMP_DIR} ] && mkdir -p ${TMP_DIR}
 
   until [[ "$CFD_PORT" =~ ^[0-9]+$ ]]; do
     echo ""
@@ -101,17 +107,17 @@ server_install() {
   # 根据 CFD_AUTH_INPUT 的内容，自行判断是 Json 还是 Token
   if echo "$CFD_AUTH_INPUT" | grep -q 'TunnelSecret'; then
     local CFD_JSON=${CFD_AUTH_INPUT//[ ]/}
-    echo $CFD_JSON > /tmp/cfd_return/tunnel.json
-    cat > /tmp/cfd_return/tunnel.yml << EOF
+    echo $CFD_JSON > ${TMP_DIR}/tunnel.json
+    cat > ${TMP_DIR}/tunnel.yml << EOF
 tunnel: $(echo "$CFD_JSON" | awk -F '"' '{print $12}')
-credentials-file: /etc/cfd_return_server/tunnel.json
+credentials-file: ${SERVER_WORK_DIR}/tunnel.json
 
 ingress:
   - hostname: ${CFD_DOMAIN}
     service: http://localhost:${CFD_PORT}
   - service: http_status:404
 EOF
-    local CFD_ARGS="tunnel --logfile /tmp/cloudflared.log --edge-ip-version auto --config /etc/cfd_return_server/tunnel.yml run"
+    local CFD_ARGS="tunnel --logfile /tmp/cloudflared.log --edge-ip-version auto --config ${SERVER_WORK_DIR}/tunnel.yml run"
   elif echo "$CFD_AUTH_INPUT" | egrep -q '[A-Z0-9a-z=]{120,250}$'; then
     local CFD_TOKEN=$(echo "$CFD_AUTH_INPUT" | sed 's/^[ ]*//; s/[ ]*$//' | awk -F ' ' '{print $NF}')
     local CFD_ARGS="tunnel --logfile /tmp/cloudflared.log --edge-ip-version auto run --token ${CFD_TOKEN}"
@@ -149,66 +155,66 @@ EOF
 
   if [ "$(type -p wget)" ]; then
     echo -e "\n下载 Cloudflared"
-    wget --no-check-certificate -O /tmp/cfd_return/cloudflared ${GH_PROXY}${CLOUDFLARED_URL}
+    wget --no-check-certificate -O ${TMP_DIR}/cloudflared ${GH_PROXY}${CLOUDFLARED_URL}
 
     echo -e "\n下载 gost"
     local GOST_URL=$(wget --no-check-certificate -qO- ${GH_PROXY}${GOST_API_URL} | sed -n "s/.*browser_download_url.*\"\(https:.*linux_${ARCH}${IS_AMD64V3}.tar.gz\)\"/\1/gp")
     GOST_URL=${GOST_URL:-${GOST_URL_DEFAULT}}
-    wget --no-check-certificate -O- ${GH_PROXY}${GOST_URL} | tar xzv -C /tmp/cfd_return gost
+    wget --no-check-certificate -O- ${GH_PROXY}${GOST_URL} | tar xzv -C ${TMP_DIR} gost
 
     if [ "$IS_CFD" != 'no_cfd' ]; then
       echo -e "\n下载 cfd 及 IP 列表"
-      wget --no-check-certificate -O /tmp/cfd_return/cfd ${GH_PROXY}${CFD_URL}
+      wget --no-check-certificate -O ${TMP_DIR}/cfd ${GH_PROXY}${CFD_URL}
       case "$STACK" in
         4 )
-          wget --no-check-certificate -O- ${GH_PROXY}${IP_URL} | grep '/24' > /tmp/cfd_return/ip
+          wget --no-check-certificate -O- ${GH_PROXY}${IP_URL} | grep '/24' > ${TMP_DIR}/ip
           ;;
         6 )
-          wget --no-check-certificate -O- ${GH_PROXY}${IP_URL} | grep '/124' > /tmp/cfd_return/ip
+          wget --no-check-certificate -O- ${GH_PROXY}${IP_URL} | grep '/124' > ${TMP_DIR}/ip
           ;;
         d )
-          wget --no-check-certificate -O- ${GH_PROXY}${IP_URL} > /tmp/cfd_return/ip
+          wget --no-check-certificate -O- ${GH_PROXY}${IP_URL} > ${TMP_DIR}/ip
           ;;
       esac
-      wget --no-check-certificate -O- ${GH_PROXY}${IP_URL} | grep '/24' > /tmp/cfd_return/ip
+      wget --no-check-certificate -O- ${GH_PROXY}${IP_URL} | grep '/24' > ${TMP_DIR}/ip
     fi
 
   elif [ "$(type -p curl)" ]; then
     echo -e "\n下载 Cloudflared"
-    curl -Lo /tmp/cfd_return/cloudflared ${GH_PROXY}${CLOUDFLARED_URL}
+    curl -Lo ${TMP_DIR}/cloudflared ${GH_PROXY}${CLOUDFLARED_URL}
 
     echo -e "\n下载 gost"
     local GOST_URL=$(curl -sSL ${GH_PROXY}${GOST_API_URL} | sed -n "s/.*browser_download_url.*\"\(https:.*linux_${ARCH}${IS_AMD64V3}.tar.gz\)\"/\1/gp")
     GOST_URL=${GOST_URL:-${GOST_URL_DEFAULT}}
-    curl -L ${GH_PROXY}${GOST_URL} | tar xzv -C /tmp/cfd_return gost
+    curl -L ${GH_PROXY}${GOST_URL} | tar xzv -C ${TMP_DIR} gost
 
     if [ "$IS_CFD" != 'no_cfd' ]; then
       echo -e "\n下载 cfd 及 IP 列表"
-      curl -Lo /tmp/cfd_return/cfd ${GH_PROXY}${CFD_URL}
+      curl -Lo ${TMP_DIR}/cfd ${GH_PROXY}${CFD_URL}
       case "$STACK" in
         4 )
-          curl -sLo- ${GH_PROXY}${IP_URL} | grep '/24' > /tmp/cfd_return/ip
+          curl -sLo- ${GH_PROXY}${IP_URL} | grep '/24' > ${TMP_DIR}/ip
           ;;
         6 )
-          curl -sLo- ${GH_PROXY}${IP_URL} | grep '/124' > /tmp/cfd_return/ip
+          curl -sLo- ${GH_PROXY}${IP_URL} | grep '/124' > ${TMP_DIR}/ip
           ;;
         d )
-          curl -sLo- ${GH_PROXY}${IP_URL} > /tmp/cfd_return/ip
+          curl -sLo- ${GH_PROXY}${IP_URL} > ${TMP_DIR}/ip
           ;;
       esac
     fi
   fi
 
-  if [[ -s /tmp/cfd_return/gost && -s /tmp/cfd_return/cloudflared ]]; then
-    chmod +x /tmp/cfd_return/gost /tmp/cfd_return/cloudflared
-    mkdir -p /etc/cfd_return_server
-    mv /tmp/cfd_return/gost /tmp/cfd_return/cloudflared /etc/cfd_return_server
-    [ -s /tmp/cfd_return/tunnel.json ] && mv /tmp/cfd_return/tunnel* /etc/cfd_return_server/
+  if [[ -s ${TMP_DIR}/gost && -s ${TMP_DIR}/cloudflared ]]; then
+    chmod +x ${TMP_DIR}/gost ${TMP_DIR}/cloudflared
+    mkdir -p ${SERVER_WORK_DIR}
+    mv ${TMP_DIR}/gost ${TMP_DIR}/cloudflared ${SERVER_WORK_DIR}
+    [ -s ${TMP_DIR}/tunnel.json ] && mv ${TMP_DIR}/tunnel* ${SERVER_WORK_DIR}/
   fi
 
-  [[ -s /tmp/cfd_return/cfd && -s /tmp/cfd_return/ip ]] && chmod +x /tmp/cfd_return/cfd && mv /tmp/cfd_return/cfd /tmp/cfd_return/ip /etc/cfd_return_server
+  [[ -s ${TMP_DIR}/cfd && -s ${TMP_DIR}/ip ]] && chmod +x ${TMP_DIR}/cfd && mv ${TMP_DIR}/cfd ${TMP_DIR}/ip ${SERVER_WORK_DIR}
 
-  rm -rf /tmp/cfd_return
+  rm -rf ${TMP_DIR}
 
   if echo "$OS" | grep -qi 'openwrt'; then
     cat >/etc/init.d/cfd_server <<EOF
@@ -235,11 +241,11 @@ EOF
 
     cat >>/etc/init.d/cfd_server <<EOF
 
-GOST_PROG="/etc/cfd_return_server/gost"
+GOST_PROG="${SERVER_WORK_DIR}/gost"
 GOST_ARGS="-D -L relay+ws://:\${CFD_PORT}?path=/\${WS_PATH}&bind=true"
 GOST_PID="/var/run/gost.pid"
 
-CFD_PROG="/etc/cfd_return_server/cloudflared"
+CFD_PROG="${SERVER_WORK_DIR}/cloudflared"
 CFD_ARGS="${CFD_ARGS}"
 CFD_PID="/var/run/cfd.pid"
 
@@ -247,8 +253,8 @@ EOF
 
     if [ "$IS_CFD" != 'no_cfd' ]; then
       cat >>/etc/init.d/cfd_server <<EOF
-CFD_ENDPOINT_PROG="/etc/cfd_return_server/cfd"
-CFD_ENDPOINT_ARGS="-file /etc/cfd_return_server/ip"
+CFD_ENDPOINT_PROG="${SERVER_WORK_DIR}/cfd"
+CFD_ENDPOINT_ARGS="-file ${SERVER_WORK_DIR}/ip"
 CFD_ENDPOINT_PID="/var/run/cfd_endpoint.pid"
 
 EOF
@@ -323,50 +329,50 @@ After=network.target
 
 [Service]
 Type=forking
-ExecStart=/etc/cfd_return_server/start.sh start
-ExecStop=/etc/cfd_return_server/start.sh stop
+ExecStart=${SERVER_WORK_DIR}/start.sh start
+ExecStop=${SERVER_WORK_DIR}/start.sh stop
 PIDFile=/var/run/gost.pid
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-    cat >/etc/cfd_return_server/start.sh <<EOF
+    cat >${SERVER_WORK_DIR}/start.sh <<EOF
 #!/bin/bash
 
 CFD_PORT=${CFD_PORT}
 WS_PATH=${WS_PATH}
 EOF
     if echo "$CFD_JSON" | grep -q '.'; then
-      cat >>/etc/cfd_return_server/start.sh <<EOF
+      cat >>${SERVER_WORK_DIR}/start.sh <<EOF
 CFD_JSON='${CFD_JSON}'
 EOF
     elif echo "$CFD_TOKEN" | grep -q '.'; then
-      cat >>/etc/cfd_return_server/start.sh <<EOF
+      cat >>${SERVER_WORK_DIR}/start.sh <<EOF
 CFD_TOKEN=${CFD_TOKEN}
 EOF
     fi
 
-  cat >>/etc/cfd_return_server/start.sh <<EOF
-GOST_PROG="/etc/cfd_return_server/gost"
+  cat >>${SERVER_WORK_DIR}/start.sh <<EOF
+GOST_PROG="${SERVER_WORK_DIR}/gost"
 GOST_ARGS="-D -L relay+ws://:\${CFD_PORT}?path=/\${WS_PATH}&bind=true"
 GOST_PID="/var/run/gost.pid"
 
-CFD_PROG="/etc/cfd_return_server/cloudflared"
+CFD_PROG="${SERVER_WORK_DIR}/cloudflared"
 CFD_ARGS="${CFD_ARGS}"
 CFD_PID="/var/run/cfd.pid"
 
 EOF
   if [ "$IS_CFD" != 'no_cfd' ]; then
-    cat >>/etc/cfd_return_server/start.sh <<EOF
-CFD_ENDPOINT_PROG="/etc/cfd_return_server/cfd"
-CFD_ENDPOINT_ARGS="-file /etc/cfd_return_server/ip"
+    cat >>${SERVER_WORK_DIR}/start.sh <<EOF
+CFD_ENDPOINT_PROG="${SERVER_WORK_DIR}/cfd"
+CFD_ENDPOINT_ARGS="-file ${SERVER_WORK_DIR}/ip"
 CFD_ENDPOINT_PID="/var/run/cfd_endpoint.pid"
 
 EOF
   fi
 
-  cat >>/etc/cfd_return_server/start.sh <<EOF
+  cat >>${SERVER_WORK_DIR}/start.sh <<EOF
 start() {
   echo -e "\nStarting gost listener on port \${CFD_PORT}..."
   \$GOST_PROG \$GOST_ARGS >/dev/null 2>&1 &
@@ -378,7 +384,7 @@ start() {
 EOF
 
   if [ "$IS_CFD" != 'no_cfd' ]; then
-    cat >>/etc/cfd_return_server/start.sh <<EOF
+    cat >>${SERVER_WORK_DIR}/start.sh <<EOF
 
   echo -e "\nStarting cfd best endpoint..."
   \$CFD_ENDPOINT_PROG \$CFD_ENDPOINT_ARGS >/dev/null 2>&1 &
@@ -386,7 +392,7 @@ EOF
 EOF
   fi
 
-  cat >>/etc/cfd_return_server/start.sh <<EOF
+  cat >>${SERVER_WORK_DIR}/start.sh <<EOF
 }
 
 stop() {
@@ -403,7 +409,7 @@ stop() {
   fi
 EOF
   if [ "$IS_CFD" != 'no_cfd' ]; then
-    cat >>/etc/cfd_return_server/start.sh <<EOF
+    cat >>${SERVER_WORK_DIR}/start.sh <<EOF
 
   echo "Stopping cfd best endpoint..."
   if [ -f "\$CFD_ENDPOINT_PID" ]; then
@@ -412,7 +418,7 @@ EOF
   fi
 EOF
   fi
-  cat >>/etc/cfd_return_server/start.sh <<EOF
+  cat >>${SERVER_WORK_DIR}/start.sh <<EOF
 }
 
 case "\$1" in
@@ -435,10 +441,10 @@ esac
 exit 0
 EOF
 
-    chmod +x /etc/cfd_return_server/start.sh
+    chmod +x ${SERVER_WORK_DIR}/start.sh
   fi
 
-  cat >/etc/cfd_return_server/config.json <<EOF
+  cat >${SERVER_WORK_DIR}/config.json <<EOF
 {
   "WS_PATH": "${WS_PATH}",
   "CFD_PORT": ${CFD_PORT},
@@ -446,12 +452,12 @@ EOF
 EOF
 
   if echo "$CFD_JSON" | grep -q '.'; then
-    cat >>/etc/cfd_return_server/config.json <<EOF
+    cat >>${SERVER_WORK_DIR}/config.json <<EOF
   "CFD_JSON": ${CFD_JSON}
 }
 EOF
   elif echo "$CFD_TOKEN" | grep -q '.'; then
-    cat >>/etc/cfd_return_server/config.json <<EOF
+    cat >>${SERVER_WORK_DIR}/config.json <<EOF
   "CFD_TOKEN": "${CFD_TOKEN}"
 }
 EOF
@@ -466,13 +472,13 @@ server_uninstall() {
       /etc/init.d/cfd_server disable
       rm -f /etc/init.d/cfd_server
     }
-    [ -d /etc/cfd_return_server ] && rm -rf /etc/cfd_return_server /tmp/cloudflared.log
+    [ -d ${SERVER_WORK_DIR} ] && rm -rf ${SERVER_WORK_DIR} /tmp/cloudflared.log
   elif echo "$OS" | egrep -qi 'debian|centos'; then
     [ -s /etc/systemd/system/cfd_server.service ] && {
       systemctl disable --now cfd_server
       rm -f /etc/systemd/system/cfd_server.service
     }
-    [ -d /etc/cfd_return_server ] && rm -rf /etc/cfd_return_server /tmp/cloudflared.log
+    [ -d ${SERVER_WORK_DIR} ] && rm -rf ${SERVER_WORK_DIR} /tmp/cloudflared.log
   else
     echo "Error: 未知的操作系统。" && exit 1
   fi
@@ -510,10 +516,10 @@ server_stop() {
 
 # 获取配置信息
 get_config() {
-  if [ -s /etc/cfd_return_server/config.json ]; then
-    CONFIG=$(cat /etc/cfd_return_server/config.json)
+  if [ -s ${SERVER_WORK_DIR}/config.json ]; then
+    CONFIG=$(cat ${SERVER_WORK_DIR}/config.json)
     WS_PATH=$(echo "$CONFIG" | awk -F '"' '/WS_PATH/{print $4}')
-    CFD_PORT=$(echo "$CONFIG" | awk -F '"' '/CFD_PORT/{print $4}')
+    CFD_PORT=$(echo "$CONFIG" | sed -n "/CFD_PORT/s/.*: \([^,]\+\),/\1/gp")
     CFD_DOMAIN=$(echo "$CONFIG" | awk -F '"' '/CFD_DOMAIN/{print $4}')
     CFD_TOKEN=$(echo "$CONFIG" | awk -F '"' '/CFD_TOKEN/{print $4}')
     CFD_JSON=$(echo "$CONFIG" | sed -n '/CFD_JSON/s/.*\({.*}\).*/\1/p')
@@ -565,22 +571,22 @@ client_install() {
 
   local GOST_URL_DEFAULT="https://github.com/go-gost/gost/releases/download/v3.0.0/gost_3.0.0_linux_${ARCH}${IS_AMD64V3}.tar.gz"
 
-  [ ! -d /tmp/cfd_return ] && mkdir -p /tmp/cfd_return
+  [ ! -d ${TMP_DIR} ] && mkdir -p ${TMP_DIR}
 
   if [ "$(type -p wget)" ]; then
     echo -e "\n下载 gost"
     local GOST_URL=$(wget --no-check-certificate -qO- ${GH_PROXY}${GOST_API_URL} | sed -n "s/.*browser_download_url.*\"\(https:.*linux_${ARCH}${IS_AMD64V3}.tar.gz\)\"/\1/gp")
     GOST_URL=${GOST_URL:-${GOST_URL_DEFAULT}}
-    wget --no-check-certificate -O- ${GH_PROXY}${GOST_URL} | tar xzv -C /tmp/cfd_return gost
+    wget --no-check-certificate -O- ${GH_PROXY}${GOST_URL} | tar xzv -C ${TMP_DIR} gost
 
   elif [ "$(type -p curl)" ]; then
     echo -e "\n下载 gost"
     local GOST_URL=$(curl -sSL ${GH_PROXY}${GOST_API_URL} | sed -n "s/.*browser_download_url.*\"\(https:.*linux_${ARCH}${IS_AMD64V3}.tar.gz\)\"/\1/gp")
     GOST_URL=${GOST_URL:-${GOST_URL_DEFAULT}}
-    curl -L ${GH_PROXY}${GOST_URL} | tar xzv -C /tmp/cfd_return gost
+    curl -L ${GH_PROXY}${GOST_URL} | tar xzv -C ${TMP_DIR} gost
   fi
 
-  [ -s /tmp/cfd_return/gost ] && chmod +x /tmp/cfd_return/gost && mkdir -p /etc/cfd_return_client && mv /tmp/cfd_return/gost /etc/cfd_return_client/gost && rm -rf /tmp/cfd_return || { echo "Error: 下载 gost 失败。" && exit 1; }
+  [ -s ${TMP_DIR}/gost ] && chmod +x ${TMP_DIR}/gost && mkdir -p ${CLIENT_WORK_DIR} && mv ${TMP_DIR}/gost ${CLIENT_WORK_DIR}/gost && rm -rf ${TMP_DIR} || { echo "Error: 下载 gost 失败。" && exit 1; }
 
   if echo "$OS" | grep -qi 'alpine'; then
     cat >/etc/init.d/cfd_client <<EOF
@@ -594,9 +600,9 @@ REMOTE_PORT=${REMOTE_PORT}
 CFD_DOMAIN=${CFD_DOMAIN}
 WS_PATH=${WS_PATH}
 
-: \${cfgfile:=/etc/cfd_return_client}
+: \${cfgfile:=${CLIENT_WORK_DIR}}
 
-command="/etc/cfd_return_client/gost"
+command="${CLIENT_WORK_DIR}/gost"
 command_args_local="-D -L socks5://[::1]:\${SOCKS5_PORT}"
 command_args_remote="-D -L rtcp://:\${REMOTE_PORT}/[::1]:\${SOCKS5_PORT} -F relay+ws://\${CFD_DOMAIN}:80?path=/\${WS_PATH}&host=\${CFD_DOMAIN}"
 
@@ -706,14 +712,14 @@ EOF
     chmod +x /etc/init.d/cfd_client
 
   elif echo "$OS" | egrep -qi 'debian|centos'; then
-    cat >/etc/cfd_return_client/start.sh <<EOF
+    cat >${CLIENT_WORK_DIR}/start.sh <<EOF
 #!/bin/bash
 
 SOCKS5_PORT=${SOCKS5_PORT}
 REMOTE_PORT=${REMOTE_PORT}
 CFD_DOMAIN=${CFD_DOMAIN}
 WS_PATH=${WS_PATH}
-GOST_PROG="/etc/cfd_return_client/gost"
+GOST_PROG="${CLIENT_WORK_DIR}/gost"
 GOST_LOCAL_PID="/var/run/gost-local.pid"
 GOST_REMOTE_PID="/var/run/gost-remote.pid"
 
@@ -760,7 +766,7 @@ esac
 
 exit 0
 EOF
-    chmod +x /etc/cfd_return_client/start.sh
+    chmod +x ${CLIENT_WORK_DIR}/start.sh
 
     cat >/etc/systemd/system/cfd_client.service <<EOF
 [Unit]
@@ -769,8 +775,8 @@ After=network.target
 
 [Service]
 Type=forking
-ExecStart=/etc/cfd_return_client/start.sh start
-ExecStop=/etc/cfd_return_client/start.sh stop
+ExecStart=${CLIENT_WORK_DIR}/start.sh start
+ExecStop=${CLIENT_WORK_DIR}/start.sh stop
 Restart=always
 RestartSec=10
 
@@ -784,13 +790,13 @@ EOF
 client_uninstall() {
   client_stop
   if echo "$OS" | grep -qi 'alpine'; then
-    [ -d /etc/cfd_return_client ] && rm -rf /etc/cfd_return_client /etc/init.d/cfd_client
+    [ -d ${CLIENT_WORK_DIR} ] && rm -rf ${CLIENT_WORK_DIR} /etc/init.d/cfd_client
   elif echo "$OS" | egrep -qi 'debian|centos'; then
     [ -s /etc/systemd/system/cfd_client.service ] && {
       systemctl disable --now cfd_client
       rm -f /etc/systemd/system/cfd_client.service
     }
-    [ -d /etc/cfd_return_client ] && rm -rf /etc/cfd_return_client
+    [ -d ${CLIENT_WORK_DIR} ] && rm -rf ${CLIENT_WORK_DIR}
   else
     echo "Error: 未知的操作系统。" && exit 1
   fi
