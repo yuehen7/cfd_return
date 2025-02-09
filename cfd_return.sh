@@ -3,7 +3,7 @@
 # 当前脚本更新日期 （2025.01.23）
 
 # GitHub 代理地址
-GH_PROXY='https://ghfast.top/'
+GH_PROXY='https://hub.gitmirror.com/'
 
 # 工作和临时目录
 SERVER_WORK_DIR='/etc/cfd_return_server'
@@ -149,9 +149,9 @@ EOF
 
   local GOST_URL_DEFAULT="https://github.com/go-gost/gost/releases/download/v3.0.0/gost_3.0.0_linux_${ARCH}${IS_AMD64V3}.tar.gz"
 
-  local CFD_URL="https://github.com/fscarmen/cfd_return/blob/main/cfd/cfd-linux-${ARCH}"
+  local CFD_URL="https://github.com/yuehen7/cfd_return/blob/main/cfd/cfd-linux-${ARCH}"
 
-  local IP_URL="https://raw.githubusercontent.com/fscarmen/cfd_return/refs/heads/main/cfd/ip.txt"
+  local IP_URL="https://raw.githubusercontent.com/yuehen7/cfd_return/refs/heads/main/cfd/ip.txt"
 
   if [ "$(type -p wget)" ]; then
     echo -e "\n下载 Cloudflared"
@@ -531,7 +531,7 @@ get_config() {
 # 显示客户端安装命令
 show_client_cmd() {
   get_config
-  echo -e "\n客户端安装命令：\nbash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/fscarmen/cfd_return/main/cfd_return.sh) -c -d $CFD_DOMAIN -w $WS_PATH -r <映射服务端使用的socks5端口>\n"
+  echo -e "\n客户端安装命令：\nbash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/yuehen7/cfd_return/main/cfd_return.sh) -c -d $CFD_DOMAIN -w $WS_PATH -r <映射服务端使用的socks5端口>\n"
 }
 
 # 客户端安装函数
@@ -840,7 +840,7 @@ check_arch
 while getopts ":uhscnd:a:p:w:r:t:" OPTNAME; do
   case "${OPTNAME,,}" in
     'h' )
-      echo -e "\n用法: bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/fscarmen/cfd_return/main/cfd_return.sh) [选项]"
+      echo -e "\n用法: bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/yuehen7/cfd_return/main/cfd_return.sh) [选项]"
       echo -e "\n选项:"
       echo -e "  -h\t\t显示帮助信息"
       echo -e "  -u\t\t卸载 cfd_return (服务端和客户端)"
@@ -854,9 +854,9 @@ while getopts ":uhscnd:a:p:w:r:t:" OPTNAME; do
       echo -e "  -c\t\t安装客户端"
       echo -e "  -r\t\t映射服务端使用的 socks5 端口 (客户端)"
       echo -e "\n示例:"
-      echo -e "  安装服务端: bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/fscarmen/cfd_return/main/cfd_return.sh) -s -p 20000 -d cfd.argo.com -w 3b451552-e776-45c5-9b98-bde3ab99bf75 -t 4 -a 'eyJhIjoiOWN...'"
-      echo -e "\n  安装客户端: bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/fscarmen/cfd_return/main/cfd_return.sh) -c -r 30000 -d cfd.argo.com -w 3b451552-e776-45c5-9b98-bde3ab99bf75"
-      echo -e "\n  卸载 cfd_return: bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/fscarmen/cfd_return/main/cfd_return.sh) -u"
+      echo -e "  安装服务端: bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/yuehen7/cfd_return/main/cfd_return.sh) -s -p 20000 -d cfd.argo.com -w 3b451552-e776-45c5-9b98-bde3ab99bf75 -t 4 -a 'eyJhIjoiOWN...'"
+      echo -e "\n  安装客户端: bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/yuehen7/cfd_return/main/cfd_return.sh) -c -r 30000 -d cfd.argo.com -w 3b451552-e776-45c5-9b98-bde3ab99bf75"
+      echo -e "\n  卸载 cfd_return: bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/yuehen7/cfd_return/main/cfd_return.sh) -u"
       echo ""
       exit 0
       ;;
