@@ -18,7 +18,7 @@ trap "rm -rf ${TMP_DIR}; exit" INT
 description() {
   clear
   echo -e "\n项目说明: 通过 Cloudflare Tunnel 的全球 CDN 网络回源，网络实现高速、稳定的数据传输。"
-  echo -e "\n项目地址: https://github.com/fscarmen/cfd_return\n"
+  echo -e "\n项目地址: https://github.com/yehen7/cfd_return\n"
 }
 
 # 检查操作系统类型
